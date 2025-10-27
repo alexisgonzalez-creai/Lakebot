@@ -3,6 +3,7 @@ import env_vars
 
 import core_logic as cl
 import ui_components as ui
+from security_logic import mask_df
 
 
 st.set_page_config(layout='wide', page_title="LakeBot")
@@ -16,12 +17,13 @@ ui.render_sidebar()
 def load_data_cached():
     return cl.load_data(env_vars.lakehouse_config)
 
+@st.cache_data
+def get_masked_data_cached(ingest_data, user_prompt):
+    return mask_df(ingest_data, user_prompt)
+
 
 with st.spinner('Estableciendo conexión...'):
     ingest_data = load_data_cached()
-
-
-agent = cl.init_agent(env_vars.openaikey, ingest_data)
 
 ui.ensure_session_state()
 ui.render_title()
@@ -36,9 +38,16 @@ with col1:
         if prompt:
             with st.spinner(""):
                 ui.show_thinking(thinking_placeholder)
+                
+                # Get masked data based on user prompt
+                masked_data = get_masked_data_cached(ingest_data, prompt)
+                
+                # Create agent with masked data
+                masked_agent = cl.init_agent(env_vars.openaikey, masked_data)
+                
                 prompt_final = cl.build_prompt(prompt)
                 try:
-                    response, elapsed_time = cl.run_agent(agent, prompt_final)
+                    response, elapsed_time = cl.run_agent(masked_agent, prompt_final)
                     ui.add_history_entry(prompt, response, elapsed_time)
                 except Exception as e:
                     st.error(f"Error al generar la respuesta: {e}")
@@ -59,7 +68,9 @@ with col2:
                     if code is not None:
                         cleaned_code = cl.clean_matplotlib_code(code)
                         try:
-                            fig = cl.generate_plot(cleaned_code, ingest_data)
+                            # Use masked data for chart generation
+                            masked_data = get_masked_data_cached(ingest_data, item["prompt"])
+                            fig = cl.generate_plot(cleaned_code, masked_data)
                             if fig:
                                 st.pyplot(fig, use_container_width=True)
                         except Exception as e:
@@ -75,7 +86,9 @@ with col2:
             if code is not None:
                 cleaned_code = cl.clean_matplotlib_code(code)
                 try:
-                    fig = cl.generate_plot(cleaned_code, ingest_data)
+                    # Use masked data for chart generation
+                    masked_data = get_masked_data_cached(ingest_data, item["prompt"])
+                    fig = cl.generate_plot(cleaned_code, masked_data)
                     if fig:
                         st.pyplot(fig, use_container_width=True)
                 except Exception as e:
